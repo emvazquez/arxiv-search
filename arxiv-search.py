@@ -86,14 +86,77 @@ def search_arxiv(parameters, batch_size=2000):
     return all_results[:max_results]
 
 
+def strip_version(arxiv_id):
+    """
+    Strip the version suffix from an arXiv ID.
+
+    Args:
+        arxiv_id (str): Full arXiv ID, e.g., '2405.01304v1'.
+
+    Returns:
+        str: Version-less arXiv ID, e.g., '2405.01304'.
+    """
+    return arxiv_id.split("v")[0]
+
+
+def query_semantic_scholar(arxiv_id):
+    """
+    Query Semantic Scholar for all available data on a paper.
+
+    Args:
+        arxiv_id (str): The arXiv ID of the paper.
+
+    Returns:
+        dict: A dictionary containing the paper's citation count, references,
+              and citing papers.
+    """
+    url = f"https://api.semanticscholar.org/v1/paper/arXiv:{arxiv_id}"
+    response = requests.get(url)
+
+    if response.status_code == 200:
+        data = response.json()
+        return {
+            "citation_count": len(data.get("citations", [])),
+            "influential_citation_count": data.get("influentialCitationCount", 0),
+            "references": [
+                {
+                    "title": ref.get("title", "Unknown Title"),
+                    "authors": [
+                        author.get("name", "Unknown")
+                        for author in ref.get("authors", [])
+                    ],
+                }
+                for ref in data.get("references", [])
+            ],
+            "citing_papers": [
+                {
+                    "title": citation.get("title", "Unknown Title"),
+                    "authors": [
+                        author.get("name", "Unknown")
+                        for author in citation.get("authors", [])
+                    ],
+                }
+                for citation in data.get("citations", [])
+            ],
+        }
+    else:
+        print(f"Failed to fetch data for arXiv ID {arxiv_id}.")
+        return {
+            "citation_count": None,
+            "influential_citation_count": None,
+            "references": None,
+            "citing_papers": None,
+        }
+
+
 if __name__ == "__main__":
     # Predefined parameters
     parameters = {
         "subject": "Bayesian optimization",
-        "max_results": 5000,  # Max number of articles to retrieve
+        "max_results": 2,  # Max number of articles to retrieve
         "categories": ["stat.ML", "stat.TH"],
-        "year_start": 2021,
-        "year_end": 2024,
+        "year_start": 2020,
+        "year_end": 2021,
     }
 
     results = search_arxiv(parameters)
@@ -103,9 +166,28 @@ if __name__ == "__main__":
         for i, article in enumerate(results, start=1):
             print(f"{i}. {article['title']}")
             print(f"   Author(s): {', '.join(article['authors'])}")
-            # Limit to 300 characters
             print(f"   Summary: {article['summary'][:300]}...")
             print(f"   Link: {article['link']}\n")
+
+        # Example: Get all data for the first result
+        first_result = results[0]
+        arxiv_id = strip_version(first_result["link"].split("/")[-1])
+        paper_data = query_semantic_scholar(arxiv_id)
+
+        print(f"\nSemantic Scholar Data for '{first_result['title']}':")
+        print(f"  Citation Count: {paper_data['citation_count']}")
+        print(f"  Influential Citations: {paper_data['influential_citation_count']}")
+
+        print("\nReferences:")
+        if paper_data["references"]:
+            for ref in paper_data["references"]:
+                print(f"   - {ref['title']} by {', '.join(ref['authors'])}")
+
+        print("\nCiting Papers:")
+        if paper_data["citing_papers"]:
+            for citing in paper_data["citing_papers"]:
+                print(f"   - {citing['title']} by {', '.join(citing['authors'])}")
+
     else:
         print(
             "No articles found for the given subject in the specified categories and date range."
